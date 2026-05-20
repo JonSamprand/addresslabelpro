@@ -1,0 +1,22 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+python-multipart==0.0.9
+pydantic==2.9.0
+pydantic-settings==2.5.0
+pandas==2.2.0
+reportlab==4.2.0
+chardet==5.2.0
+anthropic==0.39.0
+python-dotenv==1.0.1
+# Deterministic US address parser — apartment extraction without AI
+usaddress==0.5.16
+# Gemini SDK for the optional "Smart Clean" tier (10x cheaper than Haiku)
+google-genai==1.47.0
+# Stripe Checkout for per-batch Pro upgrades
+stripe==11.6.0
+# Supabase — auth + Postgres persistence
+supabase==2.28.3
+asyncpg==0.31.0
+pyjwt[crypto]==2.12.1
+# API rate limiting
+slowapi==0.1.9
