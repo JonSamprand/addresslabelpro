@@ -9,7 +9,7 @@ import { FieldMapper } from "@/components/molecules/FieldMapper";
 import { ReviewPanel } from "@/components/molecules/ReviewPanel";
 import { ProUpgradeCard } from "@/components/molecules/ProUpgradeCard";
 import { TemplatePicker } from "@/components/molecules/TemplatePicker";
-import { getConfigById } from "@/lib/templates";
+import { CUSTOM_TEMPLATE_ID, DEFAULT_CUSTOM_CONFIG, getConfigById } from "@/lib/templates";
 
 // pdfme Designer requires DOM — no SSR
 const TemplateDesigner = dynamic(
@@ -28,7 +28,8 @@ export function LabelWizard() {
     pdfUrl,
     addresses,
     selectedTemplate,
-    setSelectedTemplate,
+    customTemplateConfig,
+    selectTemplate,
     upload,
     mapFields,
     saveTemplate,
@@ -74,7 +75,8 @@ export function LabelWizard() {
 
           <TemplatePicker
             value={selectedTemplate}
-            onChange={setSelectedTemplate}
+            customConfig={customTemplateConfig}
+            onChange={selectTemplate}
           />
 
           <div className="bg-white rounded-xl border p-6">
@@ -117,7 +119,11 @@ export function LabelWizard() {
           </div>
 
           <TemplateDesigner
-            config={getConfigById(selectedTemplate)}
+            config={
+              selectedTemplate === CUSTOM_TEMPLATE_ID
+                ? customTemplateConfig ?? DEFAULT_CUSTOM_CONFIG
+                : getConfigById(selectedTemplate)
+            }
             addresses={addresses}
             onSave={saveTemplate}
           />

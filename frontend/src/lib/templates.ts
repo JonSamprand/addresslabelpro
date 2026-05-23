@@ -331,3 +331,74 @@ export function buildInputs(
 export function getConfigById(id: string): LabelTemplateConfig {
   return LABEL_CONFIGS.find((c) => c.id === id) || LABEL_CONFIGS[0];
 }
+
+// ---------------------------------------------------------------------------
+// Custom dimensions — user-defined template handed in alongside id === "custom"
+// ---------------------------------------------------------------------------
+
+export const CUSTOM_TEMPLATE_ID = "custom";
+
+/** Sensible starting point for the Custom form (US Letter, 2×5 layout). */
+export const DEFAULT_CUSTOM_CONFIG: LabelTemplateConfig = {
+  id: CUSTOM_TEMPLATE_ID,
+  name: "Custom",
+  description: "Custom dimensions",
+  category: "sheet",
+  pageWidth: 8.5 * INCH_TO_MM,
+  pageHeight: 11 * INCH_TO_MM,
+  labelWidth: 4 * INCH_TO_MM,
+  labelHeight: 2 * INCH_TO_MM,
+  columns: 2,
+  rows: 5,
+  topMargin: 0.5 * INCH_TO_MM,
+  leftMargin: 0.15625 * INCH_TO_MM,
+  hGap: 0.1875 * INCH_TO_MM,
+  vGap: 0,
+};
+
+/** Convert a local config (mm) to the inches-based payload the backend expects. */
+export function customConfigToSpec(
+  config: LabelTemplateConfig,
+): import("@/types").CustomTemplateSpec {
+  const mmToIn = (v: number) => v / INCH_TO_MM;
+  return {
+    name: config.name || "Custom",
+    description: config.description || "Custom dimensions",
+    category: config.category,
+    page_width: mmToIn(config.pageWidth),
+    page_height: mmToIn(config.pageHeight),
+    label_width: mmToIn(config.labelWidth),
+    label_height: mmToIn(config.labelHeight),
+    columns: config.columns,
+    rows: config.rows,
+    top_margin: mmToIn(config.topMargin),
+    left_margin: mmToIn(config.leftMargin),
+    h_gap: mmToIn(config.hGap),
+    v_gap: mmToIn(config.vGap),
+  };
+}
+
+/** Lightweight client-side sanity check. Returns a list of human messages. */
+export function validateCustomConfig(config: LabelTemplateConfig): string[] {
+  const issues: string[] = [];
+  const usableW =
+    config.pageWidth -
+    2 * config.leftMargin -
+    (config.columns - 1) * config.hGap;
+  const usableH =
+    config.pageHeight -
+    2 * config.topMargin -
+    (config.rows - 1) * config.vGap;
+  const totalLabelW = config.columns * config.labelWidth;
+  const totalLabelH = config.rows * config.labelHeight;
+  if (totalLabelW > usableW + 0.5) {
+    issues.push("Labels overflow the page horizontally — reduce columns, label width, or margins.");
+  }
+  if (totalLabelH > usableH + 0.5) {
+    issues.push("Labels overflow the page vertically — reduce rows, label height, or margins.");
+  }
+  if (config.labelWidth < 5 || config.labelHeight < 5) {
+    issues.push("Label is smaller than 5mm — text won't fit.");
+  }
+  return issues;
+}

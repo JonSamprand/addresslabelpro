@@ -3,6 +3,11 @@
 import { useState, useCallback, useEffect } from "react";
 import type { Template } from "@pdfme/common";
 import { api } from "@/services/api";
+import {
+  CUSTOM_TEMPLATE_ID,
+  customConfigToSpec,
+  type LabelTemplateConfig,
+} from "@/lib/templates";
 import type {
   AppStep,
   UploadResponse,
@@ -18,6 +23,7 @@ type PersistedState = {
   uploadData: UploadResponse | null;
   mappings: ColumnMapping[];
   selectedTemplate: string;
+  customTemplateConfig: LabelTemplateConfig | null;
 };
 
 function loadPersisted(): PersistedState | null {
@@ -55,11 +61,30 @@ export function useLabels() {
   const [labelTemplate, setLabelTemplate] = useState<Template | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState(persisted?.selectedTemplate ?? "avery_5160");
+  // Holds the user-defined dimensions when `selectedTemplate === "custom"`.
+  // Persisted alongside selectedTemplate so a page reload preserves the form.
+  const [customTemplateConfig, setCustomTemplateConfig] = useState<LabelTemplateConfig | null>(
+    persisted?.customTemplateConfig ?? null,
+  );
 
   // Persist the minimal state needed to resume after Stripe redirect.
   useEffect(() => {
-    savePersisted({ step, uploadData, mappings, selectedTemplate });
-  }, [step, uploadData, mappings, selectedTemplate]);
+    savePersisted({ step, uploadData, mappings, selectedTemplate, customTemplateConfig });
+  }, [step, uploadData, mappings, selectedTemplate, customTemplateConfig]);
+
+  /**
+   * Combined template setter: the picker calls this with either a built-in id
+   * or `"custom"` + the form's current config. We always update the id; we
+   * only overwrite the custom config when one is provided (so switching to a
+   * preset and back keeps the user's custom values intact).
+   */
+  const selectTemplate = useCallback(
+    (id: string, custom?: LabelTemplateConfig) => {
+      setSelectedTemplate(id);
+      if (custom) setCustomTemplateConfig(custom);
+    },
+    [],
+  );
 
   const upload = useCallback(async (file: File) => {
     setLoading(true);
@@ -84,6 +109,10 @@ export function useLabels() {
       job_id: uploadData.job_id,
       mappings,
       template: selectedTemplate,
+      custom_template:
+        selectedTemplate === CUSTOM_TEMPLATE_ID && customTemplateConfig
+          ? customConfigToSpec(customTemplateConfig)
+          : undefined,
     });
 
     if (result.success && result.data) {
@@ -94,7 +123,7 @@ export function useLabels() {
       setError(result.error || "Mapping failed");
     }
     setLoading(false);
-  }, [uploadData, mappings, selectedTemplate]);
+  }, [uploadData, mappings, selectedTemplate, customTemplateConfig]);
 
   const upgradeToPro = useCallback(async () => {
     setLoading(true);
@@ -132,6 +161,12 @@ export function useLabels() {
           addresses,
           templateId: selectedTemplate,
           labelTemplate: labelTemplate || undefined,
+          // For custom mode the Next.js generate route resolves dimensions
+          // from this payload instead of looking them up in LABEL_CONFIGS.
+          customConfig:
+            selectedTemplate === CUSTOM_TEMPLATE_ID
+              ? customTemplateConfig ?? undefined
+              : undefined,
         }),
       });
 
@@ -150,7 +185,7 @@ export function useLabels() {
       setError(e instanceof Error ? e.message : "Generation failed");
     }
     setLoading(false);
-  }, [addresses, selectedTemplate, labelTemplate]);
+  }, [addresses, selectedTemplate, labelTemplate, customTemplateConfig]);
 
   const reset = useCallback(() => {
     if (pdfUrl) URL.revokeObjectURL(pdfUrl);
@@ -164,6 +199,7 @@ export function useLabels() {
     setLabelTemplate(null);
     setPdfUrl(null);
     setSelectedTemplate("avery_5160");
+    setCustomTemplateConfig(null);
     if (typeof window !== "undefined") {
       sessionStorage.removeItem(STORAGE_KEY);
       sessionStorage.removeItem("alp_pending_job_id");
@@ -197,6 +233,8 @@ export function useLabels() {
     pdfUrl,
     selectedTemplate,
     setSelectedTemplate,
+    customTemplateConfig,
+    selectTemplate,
     upload,
     mapFields,
     saveTemplate,

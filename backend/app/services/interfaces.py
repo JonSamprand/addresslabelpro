@@ -7,6 +7,7 @@ from app.dtos.upload import ColumnMapping, UploadResponse
 from app.dtos.label import LabelPreviewResponse
 from app.entities.address import AddressEntity
 from app.entities.label import LabelEntity
+from app.shared.constants import LabelTemplate
 
 
 class CSVParserServiceI(ABC):
@@ -44,7 +45,7 @@ class LabelLayoutServiceI(ABC):
     def layout_labels(
         self,
         addresses: list[AddressEntity],
-        template: str,
+        template: LabelTemplate,
         font_size: float | None = None,
     ) -> Result[list[LabelEntity]]:
         ...
@@ -57,7 +58,7 @@ class PDFGeneratorServiceI(ABC):
     def generate(
         self,
         labels: list[LabelEntity],
-        template: str,
+        template: LabelTemplate,
         output_path: str,
     ) -> Result[str]:
         ...

@@ -4,8 +4,8 @@ from app.dtos.result import Result
 from app.entities.label import LabelEntity
 from app.infrastructure.pdf_renderer import PDFRendererInfra
 from app.services.interfaces import PDFGeneratorServiceI
-from app.shared.constants import TEMPLATES
-from app.shared.errors import AppError, BusinessErrorCode, ServerErrorCode
+from app.shared.constants import LabelTemplate
+from app.shared.errors import AppError, ServerErrorCode
 
 
 class PDFGeneratorService(PDFGeneratorServiceI):
@@ -15,18 +15,11 @@ class PDFGeneratorService(PDFGeneratorServiceI):
     def generate(
         self,
         labels: list[LabelEntity],
-        template: str,
+        template: LabelTemplate,
         output_path: str,
     ) -> Result[str]:
-        tmpl = TEMPLATES.get(template)
-        if not tmpl:
-            return Result.fail(AppError(
-                code=BusinessErrorCode.TEMPLATE_NOT_FOUND,
-                message=f"Template '{template}' not found",
-            ))
-
         try:
-            self._renderer.render(labels, tmpl, output_path)
+            self._renderer.render(labels, template, output_path)
             return Result.ok(output_path)
         except Exception as e:
             return Result.fail(AppError(

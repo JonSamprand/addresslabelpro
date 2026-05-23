@@ -2,6 +2,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
+from app.dtos.upload import CustomTemplateSpec
+
 
 class AddressWarning(BaseModel):
     row_index: int
@@ -48,5 +50,7 @@ class LabelPreviewResponse(BaseModel):
 class LabelConfigRequest(BaseModel):
     job_id: str
     template: str = "avery_5160"
+    # When `template == "custom"`, this carries the user-defined dimensions.
+    custom_template: Optional[CustomTemplateSpec] = None
     font_size: Optional[float] = None
     include_sender: bool = False
