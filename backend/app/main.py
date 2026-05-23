@@ -1,5 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from postgrest.exceptions import APIError as PostgrestAPIError
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -17,6 +19,31 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+
+# Translate Supabase/postgrest errors into structured 4xx/5xx responses so the
+# frontend gets a readable message instead of a stream reset ("Failed to fetch").
+# PGRST205 = relation not found in schema cache → almost always "migration not run".
+@app.exception_handler(PostgrestAPIError)
+async def _postgrest_error_handler(request: Request, exc: PostgrestAPIError):
+    code = (exc.code or "").upper() if hasattr(exc, "code") else ""
+    msg = exc.message if hasattr(exc, "message") else str(exc)
+    if code == "PGRST205":
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    f"Supabase schema is missing a required table ({msg}). "
+                    "Run backend/migrations/001_initial.sql in your Supabase SQL editor, "
+                    "then retry."
+                ),
+                "code": code,
+            },
+        )
+    return JSONResponse(
+        status_code=502,
+        content={"detail": f"Database error: {msg}", "code": code},
+    )
 
 _allowed_origins = [
     "http://localhost:3000",
