@@ -3,10 +3,20 @@ import type { Template, Schema } from "@pdfme/common";
 // All measurements in mm
 const INCH_TO_MM = 25.4;
 
+/**
+ * Three label families the app supports:
+ *   - "sheet"      : multi-up on US Letter / A4 (classic Avery)
+ *   - "continuous" : one label per page, sized for thermal roll printers
+ *                    (Dymo LabelWriter, Brother QL, Zebra ZD-series, …)
+ *   - "single"     : one label per page on a standard sheet size
+ */
+export type TemplateCategory = "sheet" | "continuous" | "single";
+
 export interface LabelTemplateConfig {
   id: string;
   name: string;
   description: string;
+  category: TemplateCategory;
   pageWidth: number;   // mm
   pageHeight: number;  // mm
   labelWidth: number;  // mm
@@ -19,13 +29,47 @@ export interface LabelTemplateConfig {
   vGap: number;        // mm
 }
 
+const sheet = (
+  partial: Omit<LabelTemplateConfig, "category" | "pageWidth" | "pageHeight"> & {
+    pageWidth?: number;
+    pageHeight?: number;
+  },
+): LabelTemplateConfig => ({
+  category: "sheet",
+  pageWidth: 8.5 * INCH_TO_MM,
+  pageHeight: 11 * INCH_TO_MM,
+  ...partial,
+});
+
+const continuous = (
+  id: string,
+  name: string,
+  description: string,
+  widthIn: number,
+  heightIn: number,
+): LabelTemplateConfig => ({
+  id,
+  name,
+  description,
+  category: "continuous",
+  pageWidth: widthIn * INCH_TO_MM,
+  pageHeight: heightIn * INCH_TO_MM,
+  labelWidth: widthIn * INCH_TO_MM,
+  labelHeight: heightIn * INCH_TO_MM,
+  columns: 1,
+  rows: 1,
+  topMargin: 0,
+  leftMargin: 0,
+  hGap: 0,
+  vGap: 0,
+});
+
 export const LABEL_CONFIGS: LabelTemplateConfig[] = [
-  {
+  // ---- Sheet (Avery & compatible) ----
+  sheet({
     id: "avery_5160",
     name: "Avery 5160 / 8160",
-    description: '1" x 2.625" — 30 per sheet',
-    pageWidth: 8.5 * INCH_TO_MM,
-    pageHeight: 11 * INCH_TO_MM,
+    description: 'Address · 1" × 2.625" · 30 per sheet',
     labelWidth: 2.625 * INCH_TO_MM,
     labelHeight: 1.0 * INCH_TO_MM,
     columns: 3,
@@ -34,13 +78,24 @@ export const LABEL_CONFIGS: LabelTemplateConfig[] = [
     leftMargin: 0.1875 * INCH_TO_MM,
     hGap: 0.125 * INCH_TO_MM,
     vGap: 0,
-  },
-  {
+  }),
+  sheet({
+    id: "avery_5161",
+    name: "Avery 5161 / 8161",
+    description: 'Address · 1" × 4" · 20 per sheet',
+    labelWidth: 4.0 * INCH_TO_MM,
+    labelHeight: 1.0 * INCH_TO_MM,
+    columns: 2,
+    rows: 10,
+    topMargin: 0.5 * INCH_TO_MM,
+    leftMargin: 0.15625 * INCH_TO_MM,
+    hGap: 0.1875 * INCH_TO_MM,
+    vGap: 0,
+  }),
+  sheet({
     id: "avery_5163",
     name: "Avery 5163 / 8163",
-    description: '2" x 4" — 10 per sheet',
-    pageWidth: 8.5 * INCH_TO_MM,
-    pageHeight: 11 * INCH_TO_MM,
+    description: 'Shipping · 2" × 4" · 10 per sheet',
     labelWidth: 4.0 * INCH_TO_MM,
     labelHeight: 2.0 * INCH_TO_MM,
     columns: 2,
@@ -49,13 +104,11 @@ export const LABEL_CONFIGS: LabelTemplateConfig[] = [
     leftMargin: 0.15625 * INCH_TO_MM,
     hGap: 0.1875 * INCH_TO_MM,
     vGap: 0,
-  },
-  {
+  }),
+  sheet({
     id: "avery_5164",
     name: "Avery 5164 / 8164",
-    description: '3.33" x 4" — 6 per sheet',
-    pageWidth: 8.5 * INCH_TO_MM,
-    pageHeight: 11 * INCH_TO_MM,
+    description: 'Large shipping · 3.33" × 4" · 6 per sheet',
     labelWidth: 4.0 * INCH_TO_MM,
     labelHeight: 3.333 * INCH_TO_MM,
     columns: 2,
@@ -64,8 +117,91 @@ export const LABEL_CONFIGS: LabelTemplateConfig[] = [
     leftMargin: 0.15625 * INCH_TO_MM,
     hGap: 0.1875 * INCH_TO_MM,
     vGap: 0,
+  }),
+  sheet({
+    id: "avery_5167",
+    name: "Avery 5167 / 8167",
+    description: 'Return address · 0.5" × 1.75" · 80 per sheet',
+    labelWidth: 1.75 * INCH_TO_MM,
+    labelHeight: 0.5 * INCH_TO_MM,
+    columns: 4,
+    rows: 20,
+    topMargin: 0.5 * INCH_TO_MM,
+    leftMargin: 0.3 * INCH_TO_MM,
+    hGap: 0.3 * INCH_TO_MM,
+    vGap: 0,
+  }),
+
+  // ---- Continuous feed (thermal roll printers) ----
+  continuous("dymo_30252", "Dymo 30252 Address", 'Address · 1.125" × 3.5"', 1.125, 3.5),
+  continuous("dymo_30253", "Dymo 30253 Large Address", 'Large address · 1.125" × 4"', 1.125, 4.0),
+  continuous("dymo_30334", "Dymo 30334 Multi-purpose", 'Multi-purpose · 1.25" × 2.25"', 2.25, 1.25),
+  continuous(
+    "brother_dk1201",
+    "Brother DK-1201 Standard",
+    'Standard address · 29mm × 90mm (1.14" × 3.54")',
+    29 / 25.4,
+    90 / 25.4,
+  ),
+
+  // ---- Single label per page ----
+  {
+    id: "single_4x6",
+    name: '4" × 6" Shipping Label',
+    description: 'Generic thermal · 4" × 6" · Zebra, Rollo, etc.',
+    category: "single",
+    pageWidth: 4 * INCH_TO_MM,
+    pageHeight: 6 * INCH_TO_MM,
+    labelWidth: 4 * INCH_TO_MM,
+    labelHeight: 6 * INCH_TO_MM,
+    columns: 1,
+    rows: 1,
+    topMargin: 0,
+    leftMargin: 0,
+    hGap: 0,
+    vGap: 0,
+  },
+  {
+    id: "single_letter",
+    name: "US Letter — Full Page",
+    description: 'One label per page · 8.5" × 11"',
+    category: "single",
+    pageWidth: 8.5 * INCH_TO_MM,
+    pageHeight: 11 * INCH_TO_MM,
+    labelWidth: 8 * INCH_TO_MM,
+    labelHeight: 10.5 * INCH_TO_MM,
+    columns: 1,
+    rows: 1,
+    topMargin: 0.25 * INCH_TO_MM,
+    leftMargin: 0.25 * INCH_TO_MM,
+    hGap: 0,
+    vGap: 0,
   },
 ];
+
+export const CATEGORY_META: Record<
+  TemplateCategory,
+  { label: string; subtitle: string }
+> = {
+  sheet: {
+    label: "Sheet labels",
+    subtitle: "Avery & compatible · printed on US Letter sheets",
+  },
+  continuous: {
+    label: "Continuous feed",
+    subtitle: "Dymo, Brother, Zebra & other thermal roll printers",
+  },
+  single: {
+    label: "Single label per page",
+    subtitle: "One label = one PDF page · for full-page or generic 4×6",
+  },
+};
+
+export function getConfigsByCategory(
+  category: TemplateCategory,
+): LabelTemplateConfig[] {
+  return LABEL_CONFIGS.filter((c) => c.category === category);
+}
 
 // Padding inside each label (mm)
 const LABEL_PADDING = 2;
