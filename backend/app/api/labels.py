@@ -320,19 +320,50 @@ async def generate_pdf(
     }
 
 
+_SAFE_FILENAME_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_."
+
+
+def _safe_download_filename(raw: str) -> str:
+    """Strip path separators, CR/LF, and anything that doesn't belong in a
+    Content-Disposition value. Falls back to a generic name if nothing's left."""
+    if not raw:
+        return "labels.pdf"
+    base = raw.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    if base.lower().endswith(".csv"):
+        base = base[:-4]
+    cleaned = "".join(c if c in _SAFE_FILENAME_CHARS else "_" for c in base).strip("._") or "labels"
+    return f"labels_{cleaned[:80]}.pdf"
+
+
 @router.get("/download/{job_id}")
 async def download_pdf(job_id: str, user: CurrentUser = Depends(get_current_user)):
-    """Download the generated PDF."""
+    """Download the generated PDF.
+
+    SECURITY: the path we serve is reconstructed server-side from
+    `settings.output_dir + job_id` — we never read the `pdf_path` column
+    from the DB. RLS gives the user UPDATE on their own jobs row, so a
+    malicious client could set `pdf_path` to e.g. /etc/passwd and have us
+    serve that. The realpath check is belt-and-braces against output_dir
+    being a symlink that escapes its parent.
+    """
     job = await _jobs_repo.get(user.id, job_id)
-    if not job or not job.pdf_path:
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    safe_root = os.path.realpath(settings.output_dir)
+    candidate = os.path.realpath(os.path.join(safe_root, f"{job_id}.pdf"))
+    # Confine the resolved path strictly under output_dir/. The explicit
+    # `+ os.sep` prevents a sibling like /output_evil from matching when
+    # output_dir is /output (a plain prefix string check would pass).
+    if not candidate.startswith(safe_root + os.sep):
         raise HTTPException(status_code=404, detail="PDF not found")
-    if not os.path.exists(job.pdf_path):
-        raise HTTPException(status_code=404, detail="PDF file not found on disk")
+    if not os.path.isfile(candidate):
+        raise HTTPException(status_code=404, detail="PDF not found")
 
     return FileResponse(
-        job.pdf_path,
+        candidate,
         media_type="application/pdf",
-        filename=f"labels_{job.filename.replace('.csv', '')}.pdf",
+        filename=_safe_download_filename(job.filename or ""),
     )
 
 
