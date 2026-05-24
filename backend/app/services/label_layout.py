@@ -5,13 +5,12 @@ from app.entities.address import AddressEntity
 from app.entities.label import LabelEntity
 from app.services.interfaces import LabelLayoutServiceI
 from app.shared.constants import (
-    TEMPLATES,
+    LabelTemplate,
     DEFAULT_FONT_SIZE,
     MIN_FONT_SIZE,
     FONT_SIZE_STEP,
     POINTS_PER_INCH,
 )
-from app.shared.errors import AppError, BusinessErrorCode
 
 
 # Approximate character width as fraction of font size (monospace approximation)
@@ -22,16 +21,10 @@ class LabelLayoutService(LabelLayoutServiceI):
     def layout_labels(
         self,
         addresses: list[AddressEntity],
-        template: str,
+        template: LabelTemplate,
         font_size: float | None = None,
     ) -> Result[list[LabelEntity]]:
-        tmpl = TEMPLATES.get(template)
-        if not tmpl:
-            return Result.fail(AppError(
-                code=BusinessErrorCode.TEMPLATE_NOT_FOUND,
-                message=f"Template '{template}' not found",
-            ))
-
+        tmpl = template
         base_font_size = font_size or DEFAULT_FONT_SIZE
         label_width_pts = tmpl.label_width * POINTS_PER_INCH
         label_height_pts = tmpl.label_height * POINTS_PER_INCH

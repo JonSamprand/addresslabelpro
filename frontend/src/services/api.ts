@@ -56,6 +56,9 @@ export const api = {
     return request<LabelPreviewResponse>("/labels/map", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // FieldMappingRequest already includes the optional custom_template
+      // field — JSON.stringify drops undefined keys, so non-custom templates
+      // serialize identically to before.
       body: JSON.stringify(req),
     });
   },

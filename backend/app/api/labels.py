@@ -1,11 +1,11 @@
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from app.config import settings
-from app.dtos.upload import UploadResponse, FieldMappingRequest
+from app.dtos.upload import CustomTemplateSpec, FieldMappingRequest, UploadResponse
 from app.dtos.label import (
     AddressWarning,
     LabelConfigRequest,
@@ -25,8 +25,49 @@ from app.services.address_validator import AddressValidatorService
 from app.services.csv_parser import CSVParserService
 from app.services.label_layout import LabelLayoutService
 from app.services.pdf_generator import PDFGeneratorService
+from app.shared.constants import TEMPLATES, LabelTemplate
 from app.shared.rate_limit import limiter
 from app.shared.utils import ensure_directories
+
+
+def _resolve_template(
+    template_id: str,
+    custom: Optional[CustomTemplateSpec],
+) -> LabelTemplate:
+    """Pick the right LabelTemplate for the request.
+
+    Built-in template IDs come from the static TEMPLATES catalog. The special
+    id "custom" pulls dimensions from the inline `custom` payload.
+    """
+    if template_id == "custom":
+        if custom is None:
+            raise HTTPException(
+                status_code=400,
+                detail="template='custom' requires a custom_template payload.",
+            )
+        return LabelTemplate(
+            name=custom.name,
+            description=custom.description,
+            category=custom.category,
+            page_width=custom.page_width,
+            page_height=custom.page_height,
+            label_width=custom.label_width,
+            label_height=custom.label_height,
+            columns=custom.columns,
+            rows=custom.rows,
+            top_margin=custom.top_margin,
+            left_margin=custom.left_margin,
+            h_gap=custom.h_gap,
+            v_gap=custom.v_gap,
+        )
+
+    tmpl = TEMPLATES.get(template_id)
+    if not tmpl:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown template '{template_id}'. Use one of: {', '.join(TEMPLATES.keys())}, or 'custom'.",
+        )
+    return tmpl
 
 router = APIRouter()
 
@@ -172,7 +213,8 @@ async def map_fields(
     warnings = [AddressWarning(**w) for w in warnings_raw]
     international_count = sum(1 for a in addresses if a.is_international)
 
-    layout_result = _label_layout.layout_labels(addresses, body.template)
+    tmpl = _resolve_template(body.template, body.custom_template)
+    layout_result = _label_layout.layout_labels(addresses, tmpl)
     if not layout_result.success:
         raise HTTPException(
             status_code=400,
@@ -180,9 +222,7 @@ async def map_fields(
         )
 
     labels = layout_result.data
-    from app.shared.constants import TEMPLATES
-    tmpl = TEMPLATES.get(body.template)
-    labels_per_page = tmpl.columns * tmpl.rows if tmpl else 30
+    labels_per_page = tmpl.labels_per_page
     total_pages = (len(labels) + labels_per_page - 1) // labels_per_page
 
     # Persist state for generate step
@@ -258,8 +298,9 @@ async def generate_pdf(
     if not labels:
         raise HTTPException(status_code=400, detail="No validated labels found. Run /map first.")
 
+    tmpl = _resolve_template(body.template, body.custom_template)
     output_path = os.path.join(settings.output_dir, f"{body.job_id}.pdf")
-    result = _pdf_generator.generate(labels, body.template, output_path)
+    result = _pdf_generator.generate(labels, tmpl, output_path)
     if not result.success:
         raise HTTPException(
             status_code=500,

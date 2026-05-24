@@ -5,11 +5,11 @@ import { useLabels } from "@/hooks/useLabels";
 import { Stepper } from "@/components/atoms/Stepper";
 import { FileDropZone } from "@/components/atoms/FileDropZone";
 import { Button } from "@/components/atoms/Button";
-import { Select } from "@/components/atoms/Select";
 import { FieldMapper } from "@/components/molecules/FieldMapper";
 import { ReviewPanel } from "@/components/molecules/ReviewPanel";
 import { ProUpgradeCard } from "@/components/molecules/ProUpgradeCard";
-import { LABEL_CONFIGS, getConfigById } from "@/lib/templates";
+import { TemplatePicker } from "@/components/molecules/TemplatePicker";
+import { CUSTOM_TEMPLATE_ID, DEFAULT_CUSTOM_CONFIG, getConfigById } from "@/lib/templates";
 
 // pdfme Designer requires DOM — no SSR
 const TemplateDesigner = dynamic(
@@ -28,7 +28,8 @@ export function LabelWizard() {
     pdfUrl,
     addresses,
     selectedTemplate,
-    setSelectedTemplate,
+    customTemplateConfig,
+    selectTemplate,
     upload,
     mapFields,
     saveTemplate,
@@ -38,11 +39,6 @@ export function LabelWizard() {
     updateMapping,
     upgradeToPro,
   } = useLabels();
-
-  const templateOptions = LABEL_CONFIGS.map((t) => ({
-    value: t.id,
-    label: `${t.name} — ${t.description}`,
-  }));
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -69,21 +65,19 @@ export function LabelWizard() {
       {/* Step 2: Map Fields */}
       {step === "map" && uploadData && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">Map Your Fields</h2>
-              <p className="mt-1 text-gray-500">
-                {uploadData.total_rows} contacts found in{" "}
-                <span className="font-mono">{uploadData.filename}</span>
-              </p>
-            </div>
-            <Select
-              label="Label Template"
-              value={selectedTemplate}
-              onChange={(e) => setSelectedTemplate(e.target.value)}
-              options={templateOptions}
-            />
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Map Your Fields</h2>
+            <p className="mt-1 text-gray-500">
+              {uploadData.total_rows} contacts found in{" "}
+              <span className="font-mono">{uploadData.filename}</span>
+            </p>
           </div>
+
+          <TemplatePicker
+            value={selectedTemplate}
+            customConfig={customTemplateConfig}
+            onChange={selectTemplate}
+          />
 
           <div className="bg-white rounded-xl border p-6">
             <FieldMapper
@@ -125,7 +119,11 @@ export function LabelWizard() {
           </div>
 
           <TemplateDesigner
-            config={getConfigById(selectedTemplate)}
+            config={
+              selectedTemplate === CUSTOM_TEMPLATE_ID
+                ? customTemplateConfig ?? DEFAULT_CUSTOM_CONFIG
+                : getConfigById(selectedTemplate)
+            }
             addresses={addresses}
             onSave={saveTemplate}
           />

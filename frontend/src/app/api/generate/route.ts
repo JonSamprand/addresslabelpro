@@ -5,9 +5,11 @@ import { generate } from "@pdfme/generator";
 import { text, image } from "@pdfme/schemas";
 import type { Template, Schema, Font } from "@pdfme/common";
 import {
+  CUSTOM_TEMPLATE_ID,
   getConfigById,
   buildSheetTemplate,
   buildInputs,
+  type LabelTemplateConfig,
 } from "@/lib/templates";
 
 let _fontCache: Font | null = null;
@@ -49,6 +51,9 @@ interface GenerateRequest {
   addresses: AddressData[];
   templateId: string;
   labelTemplate?: Template; // Custom template from the designer
+  // When templateId === "custom", caller passes the dimensions inline rather
+  // than relying on LABEL_CONFIGS lookup.
+  customConfig?: LabelTemplateConfig;
 }
 
 function formatAddress(addr: AddressData) {
@@ -91,7 +96,10 @@ function formatAddress(addr: AddressData) {
 export async function POST(request: NextRequest) {
   try {
     const body: GenerateRequest = await request.json();
-    const config = getConfigById(body.templateId);
+    const config: LabelTemplateConfig =
+      body.templateId === CUSTOM_TEMPLATE_ID && body.customConfig
+        ? body.customConfig
+        : getConfigById(body.templateId);
 
     // Get the label schema — either from designer or default
     let labelSchema: Schema[];

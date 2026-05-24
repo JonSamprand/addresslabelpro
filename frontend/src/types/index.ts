@@ -14,11 +14,30 @@ export interface UploadResponse {
   sample_rows: Record<string, string>[];
 }
 
+// User-defined label dimensions sent inline when template === "custom".
+// All measurements are in inches (frontend converts if the user typed mm).
+export interface CustomTemplateSpec {
+  name: string;
+  description: string;
+  category: "sheet" | "continuous" | "single";
+  page_width: number;
+  page_height: number;
+  label_width: number;
+  label_height: number;
+  columns: number;
+  rows: number;
+  top_margin: number;
+  left_margin: number;
+  h_gap: number;
+  v_gap: number;
+}
+
 // Request to map fields
 export interface FieldMappingRequest {
   job_id: string;
   mappings: ColumnMapping[];
   template: string;
+  custom_template?: CustomTemplateSpec;
   sender_address?: Record<string, string>;
 }
 
@@ -46,6 +65,7 @@ export interface LabelPreviewResponse {
 export interface LabelConfigRequest {
   job_id: string;
   template: string;
+  custom_template?: CustomTemplateSpec;
   font_size?: number;
   include_sender: boolean;
 }
