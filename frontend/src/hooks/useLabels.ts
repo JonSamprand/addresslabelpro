@@ -6,8 +6,15 @@ import { api } from "@/services/api";
 import {
   CUSTOM_TEMPLATE_ID,
   customConfigToSpec,
+  getConfigById,
   type LabelTemplateConfig,
 } from "@/lib/templates";
+import {
+  organize,
+  orderedWithPageBreaks,
+  type GroupKey,
+  type SortDir,
+} from "@/lib/grouping";
 import type {
   AppStep,
   UploadResponse,
@@ -24,6 +31,9 @@ type PersistedState = {
   mappings: ColumnMapping[];
   selectedTemplate: string;
   customTemplateConfig: LabelTemplateConfig | null;
+  groupKey: GroupKey;
+  sortDir: SortDir;
+  pageBreakPerGroup: boolean;
 };
 
 function loadPersisted(): PersistedState | null {
@@ -67,10 +77,35 @@ export function useLabels() {
     persisted?.customTemplateConfig ?? null,
   );
 
+  // Label organization for the Review step (group/sort by ZIP, state, etc.).
+  const [groupKey, setGroupKey] = useState<GroupKey>(persisted?.groupKey ?? "none");
+  const [sortDir, setSortDir] = useState<SortDir>(persisted?.sortDir ?? "asc");
+  const [pageBreakPerGroup, setPageBreakPerGroup] = useState<boolean>(
+    persisted?.pageBreakPerGroup ?? false,
+  );
+
   // Persist the minimal state needed to resume after Stripe redirect.
   useEffect(() => {
-    savePersisted({ step, uploadData, mappings, selectedTemplate, customTemplateConfig });
-  }, [step, uploadData, mappings, selectedTemplate, customTemplateConfig]);
+    savePersisted({
+      step,
+      uploadData,
+      mappings,
+      selectedTemplate,
+      customTemplateConfig,
+      groupKey,
+      sortDir,
+      pageBreakPerGroup,
+    });
+  }, [
+    step,
+    uploadData,
+    mappings,
+    selectedTemplate,
+    customTemplateConfig,
+    groupKey,
+    sortDir,
+    pageBreakPerGroup,
+  ]);
 
   /**
    * Combined template setter: the picker calls this with either a built-in id
@@ -154,11 +189,25 @@ export function useLabels() {
     setError(null);
 
     try {
+      // Apply the Review-step organization: reorder addresses by the chosen
+      // group key so labels print pre-sorted. When "start each group on a new
+      // sheet" is on, pad group tails with blank labels to page boundaries.
+      const config =
+        selectedTemplate === CUSTOM_TEMPLATE_ID && customTemplateConfig
+          ? customTemplateConfig
+          : getConfigById(selectedTemplate);
+      const labelsPerPage = config.columns * config.rows;
+      const result = organize(addresses, groupKey, sortDir);
+      const orderedAddresses =
+        pageBreakPerGroup && groupKey !== "none"
+          ? orderedWithPageBreaks(result.groups, labelsPerPage)
+          : result.ordered;
+
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          addresses,
+          addresses: orderedAddresses,
           templateId: selectedTemplate,
           labelTemplate: labelTemplate || undefined,
           // For custom mode the Next.js generate route resolves dimensions
@@ -185,7 +234,15 @@ export function useLabels() {
       setError(e instanceof Error ? e.message : "Generation failed");
     }
     setLoading(false);
-  }, [addresses, selectedTemplate, labelTemplate, customTemplateConfig]);
+  }, [
+    addresses,
+    selectedTemplate,
+    labelTemplate,
+    customTemplateConfig,
+    groupKey,
+    sortDir,
+    pageBreakPerGroup,
+  ]);
 
   const reset = useCallback(() => {
     if (pdfUrl) URL.revokeObjectURL(pdfUrl);
@@ -200,6 +257,9 @@ export function useLabels() {
     setPdfUrl(null);
     setSelectedTemplate("avery_5160");
     setCustomTemplateConfig(null);
+    setGroupKey("none");
+    setSortDir("asc");
+    setPageBreakPerGroup(false);
     if (typeof window !== "undefined") {
       sessionStorage.removeItem(STORAGE_KEY);
       sessionStorage.removeItem("alp_pending_job_id");
@@ -235,6 +295,20 @@ export function useLabels() {
     setSelectedTemplate,
     customTemplateConfig,
     selectTemplate,
+    // Label organization (Review step)
+    groupKey,
+    setGroupKey,
+    sortDir,
+    setSortDir,
+    pageBreakPerGroup,
+    setPageBreakPerGroup,
+    labelsPerPage: (() => {
+      const c =
+        selectedTemplate === CUSTOM_TEMPLATE_ID && customTemplateConfig
+          ? customTemplateConfig
+          : getConfigById(selectedTemplate);
+      return c.columns * c.rows;
+    })(),
     upload,
     mapFields,
     saveTemplate,
