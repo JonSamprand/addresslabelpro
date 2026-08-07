@@ -17,31 +17,45 @@ class AddressValidatorService(AddressValidatorServiceI):
         return validated
 
     def detect_international(self, address: AddressEntity) -> AddressEntity:
-        """Detect if an address is international based on available signals."""
-        if address.country and address.is_international:
+        """Infer the country when it wasn't supplied.
+
+        Rules, in order of confidence:
+          1. An explicit country wins — we only canonicalise US variants.
+          2. Otherwise infer from the postal-code format.
+          3. If nothing matches, leave `country` EMPTY (= unknown).
+
+        We deliberately never invent a country. Two past bugs came from doing
+        so: setting the literal sentinel "INTERNATIONAL" (which then printed
+        as a line on the label), and defaulting unknowns to "US" (which made
+        every stateless foreign row emit a bogus "Missing state" warning).
+        """
+        if address.country and address.country.strip():
+            # Canonicalise the many spellings of the US so downstream
+            # grouping/format code sees one value. Territories are left alone
+            # (they're meaningful as-is and already treated as domestic).
+            if address.country.strip().upper() in (
+                "US", "USA", "U.S.", "U.S.A.",
+                "UNITED STATES", "UNITED STATES OF AMERICA",
+            ):
+                return address.model_copy(update={"country": "US"})
             return address
 
-        # If no country specified, try to infer from zip code format
-        if address.zip_code and not address.country:
-            if re.match(US_ZIP_PATTERN, address.zip_code.strip()):
+        zip_raw = (address.zip_code or "").strip()
+        if zip_raw:
+            if re.match(US_ZIP_PATTERN, zip_raw):
                 return address.model_copy(update={"country": "US"})
 
-            # Canadian postal code pattern (A1A 1A1)
-            if re.match(r"^[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d$", address.zip_code.strip()):
-                return address.model_copy(update={"country": "CA"})
+            # Canadian postal code pattern (A1A 1A1). We store the full country
+            # name, not the ISO code, because USPS wants the destination country
+            # spelled out in English on the last line of an international label.
+            if re.match(r"^[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d$", zip_raw):
+                return address.model_copy(update={"country": "Canada"})
 
             # UK postcode pattern
-            if re.match(r"^[A-Za-z]{1,2}\d[A-Za-z\d]?\s?\d[A-Za-z]{2}$", address.zip_code.strip()):
-                return address.model_copy(update={"country": "GB"})
+            if re.match(r"^[A-Za-z]{1,2}\d[A-Za-z\d]?\s?\d[A-Za-z]{2}$", zip_raw):
+                return address.model_copy(update={"country": "United Kingdom"})
 
-            # If zip has letters and doesn't match US pattern, likely international
-            if re.search(r"[A-Za-z]", address.zip_code):
-                return address.model_copy(update={"country": "INTERNATIONAL"})
-
-        # Default to US if no signals
-        if not address.country:
-            return address.model_copy(update={"country": "US"})
-
+        # Unknown — leave country empty rather than guessing.
         return address
 
     def check_missing_fields(self, addresses: list[AddressEntity]) -> list[dict]:
