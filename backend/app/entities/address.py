@@ -2,6 +2,22 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 
+# Country values that USPS treats as domestic mail. Includes the US territories
+# and freely-associated states, which use US ZIP codes and two-letter state
+# codes — mail to them is domestic, so we must NOT print a country line or
+# flag them as international.
+US_DOMESTIC_COUNTRIES = {
+    "US", "USA", "U.S.", "U.S.A.", "UNITED STATES", "UNITED STATES OF AMERICA",
+    # Territories / commonwealths
+    "PR", "PUERTO RICO",
+    "VI", "USVI", "U.S. VIRGIN ISLANDS", "VIRGIN ISLANDS",
+    "GU", "GUAM",
+    "AS", "AMERICAN SAMOA",
+    "MP", "NORTHERN MARIANA ISLANDS",
+    # Freely associated states (USPS domestic rates)
+    "FM", "MICRONESIA", "MH", "MARSHALL ISLANDS", "PW", "PALAU",
+}
+
 
 class AddressEntity(BaseModel):
     """Core domain model for a mailing address."""
@@ -17,14 +33,29 @@ class AddressEntity(BaseModel):
     raw_data: Dict[str, str] = {}
 
     @property
-    def is_international(self) -> bool:
+    def is_us_domestic(self) -> bool:
+        """True only when we positively know this is USPS-domestic mail.
+
+        An empty country means *unknown*, not "US" — we deliberately don't
+        guess, because guessing US is what produced spurious
+        "Missing state" warnings on international lists.
+        """
         if not self.country:
             return False
-        return self.country.upper() not in ("US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA")
+        return self.country.strip().upper() in US_DOMESTIC_COUNTRIES
+
+    @property
+    def is_international(self) -> bool:
+        # Unknown country is not treated as international: we don't want to
+        # print a bogus country line for a row we simply couldn't classify.
+        if not self.country:
+            return False
+        return not self.is_us_domestic
 
     @property
     def is_complete(self) -> bool:
-        return bool(self.name and self.street1 and self.city and (self.state or self.is_international) and self.zip_code)
+        state_ok = bool(self.state) or not self.is_us_domestic
+        return bool(self.name and self.street1 and self.city and state_ok and self.zip_code)
 
     @property
     def missing_fields(self) -> List[str]:
@@ -35,7 +66,10 @@ class AddressEntity(BaseModel):
             missing.append("street1")
         if not self.city:
             missing.append("city")
-        if not self.state and not self.is_international:
+        # Only warn about a missing state when we positively know this is a US
+        # domestic address. Many countries have no state/province at all, and
+        # an unknown country shouldn't generate a warning we can't justify.
+        if not self.state and self.is_us_domestic:
             missing.append("state")
         if not self.zip_code:
             missing.append("zip_code")
