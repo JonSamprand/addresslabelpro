@@ -9,7 +9,12 @@ import { FieldMapper } from "@/components/molecules/FieldMapper";
 import { ReviewPanel } from "@/components/molecules/ReviewPanel";
 import { ProUpgradeCard } from "@/components/molecules/ProUpgradeCard";
 import { TemplatePicker } from "@/components/molecules/TemplatePicker";
-import { CUSTOM_TEMPLATE_ID, DEFAULT_CUSTOM_CONFIG, getConfigById } from "@/lib/templates";
+import {
+  CUSTOM_TEMPLATE_ID,
+  DEFAULT_CUSTOM_CONFIG,
+  FIELD_LAYOUT_OPTIONS,
+  getConfigById,
+} from "@/lib/templates";
 
 // pdfme Designer requires DOM — no SSR
 const TemplateDesigner = dynamic(
@@ -36,6 +41,8 @@ export function LabelWizard() {
     setSortDir,
     pageBreakPerGroup,
     setPageBreakPerGroup,
+    fieldLayout,
+    setFieldLayout,
     labelsPerPage,
     upload,
     mapFields,
@@ -134,6 +141,42 @@ export function LabelWizard() {
             </Button>
           </div>
 
+          <div className="bg-white rounded-xl border p-5">
+            <h3 className="text-sm font-semibold text-gray-900 mb-1">
+              Address fields
+            </h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Choose how the address is split into editable fields. Switching
+              resets the canvas to that arrangement — you can still drag,
+              resize, or delete any field afterwards.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {FIELD_LAYOUT_OPTIONS.map((o) => {
+                const active = o.value === fieldLayout;
+                return (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => setFieldLayout(o.value)}
+                    aria-pressed={active}
+                    className={`text-left border rounded-lg p-3 transition-all ${
+                      active
+                        ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/40"
+                        : "border-gray-200 hover:border-gray-400 bg-white"
+                    }`}
+                  >
+                    <div className="text-sm font-medium text-gray-900">
+                      {o.label}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500 leading-snug">
+                      {o.description}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <TemplateDesigner
             config={
               selectedTemplate === CUSTOM_TEMPLATE_ID
@@ -141,6 +184,7 @@ export function LabelWizard() {
                 : getConfigById(selectedTemplate)
             }
             addresses={addresses}
+            layout={fieldLayout}
             onSave={saveTemplate}
           />
         </div>
