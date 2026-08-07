@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Template, Schema, Font } from "@pdfme/common";
 import type { AddressData } from "@/types";
 import type { LabelTemplateConfig } from "@/lib/templates";

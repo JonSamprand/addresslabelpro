@@ -30,6 +30,13 @@ export function LabelWizard() {
     selectedTemplate,
     customTemplateConfig,
     selectTemplate,
+    groupKey,
+    setGroupKey,
+    sortDir,
+    setSortDir,
+    pageBreakPerGroup,
+    setPageBreakPerGroup,
+    labelsPerPage,
     upload,
     mapFields,
     saveTemplate,
@@ -78,6 +85,15 @@ export function LabelWizard() {
             customConfig={customTemplateConfig}
             onChange={selectTemplate}
           />
+
+          <div className="flex items-start gap-2 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3">
+            <span aria-hidden className="text-blue-600">📍</span>
+            <p className="text-sm text-blue-800">
+              In the <strong>Review</strong> step you&apos;ll be able to sort &amp;
+              group these labels — e.g. by <strong>ZIP code</strong> so your mail
+              prints pre-sorted for faster USPS drop-off.
+            </p>
+          </div>
 
           <div className="bg-white rounded-xl border p-6">
             <FieldMapper
@@ -134,7 +150,16 @@ export function LabelWizard() {
       {step === "review" && previewData && (
         <div className="space-y-6">
           <h2 className="text-2xl font-bold text-gray-900">Review & Generate</h2>
-          <ReviewPanel preview={previewData} />
+          <ReviewPanel
+            preview={previewData}
+            groupKey={groupKey}
+            sortDir={sortDir}
+            pageBreak={pageBreakPerGroup}
+            labelsPerPage={labelsPerPage}
+            onGroupKeyChange={setGroupKey}
+            onSortDirChange={setSortDir}
+            onPageBreakChange={setPageBreakPerGroup}
+          />
           <div className="flex justify-between">
             <Button variant="ghost" onClick={reset}>Start Over</Button>
             <Button onClick={generate} loading={loading} size="lg">

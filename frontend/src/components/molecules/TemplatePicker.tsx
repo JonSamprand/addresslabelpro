@@ -324,7 +324,7 @@ function CustomDimensionsForm({
         <div className="text-xs text-gray-500 text-center leading-snug">
           {config.columns * config.rows} label{config.columns * config.rows === 1 ? "" : "s"} per page
           <br />
-          {inField("labelWidth")}" × {inField("labelHeight")}" each
+          {inField("labelWidth")}&quot; × {inField("labelHeight")}&quot; each
         </div>
       </div>
     </div>
