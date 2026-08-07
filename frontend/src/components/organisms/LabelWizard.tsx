@@ -9,7 +9,12 @@ import { FieldMapper } from "@/components/molecules/FieldMapper";
 import { ReviewPanel } from "@/components/molecules/ReviewPanel";
 import { ProUpgradeCard } from "@/components/molecules/ProUpgradeCard";
 import { TemplatePicker } from "@/components/molecules/TemplatePicker";
-import { CUSTOM_TEMPLATE_ID, DEFAULT_CUSTOM_CONFIG, getConfigById } from "@/lib/templates";
+import {
+  CUSTOM_TEMPLATE_ID,
+  DEFAULT_CUSTOM_CONFIG,
+  FIELD_LAYOUT_OPTIONS,
+  getConfigById,
+} from "@/lib/templates";
 
 // pdfme Designer requires DOM — no SSR
 const TemplateDesigner = dynamic(
@@ -36,6 +41,14 @@ export function LabelWizard() {
     setSortDir,
     pageBreakPerGroup,
     setPageBreakPerGroup,
+    fieldLayout,
+    setFieldLayout,
+    currentTemplate,
+    hasCustomDesign,
+    customisedLayoutCount,
+    handleTemplateChange,
+    revertCurrentLayout,
+    resetAllDesigns,
     labelsPerPage,
     upload,
     mapFields,
@@ -134,6 +147,83 @@ export function LabelWizard() {
             </Button>
           </div>
 
+          <div className="bg-white rounded-xl border p-5">
+            <h3 className="text-sm font-semibold text-gray-900 mb-1">
+              Address fields
+            </h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Choose how the address is split into editable fields. Your edits
+              are kept separately for each style — switching back and forth
+              never loses work. Use <em>Add field</em> below to combine or
+              separate parts (e.g. one “City, State ZIP” line, or three).
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {FIELD_LAYOUT_OPTIONS.map((o) => {
+                const active = o.value === fieldLayout;
+                return (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => setFieldLayout(o.value)}
+                    aria-pressed={active}
+                    className={`text-left border rounded-lg p-3 transition-all ${
+                      active
+                        ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/40"
+                        : "border-gray-200 hover:border-gray-400 bg-white"
+                    }`}
+                  >
+                    <div className="text-sm font-medium text-gray-900">
+                      {o.label}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500 leading-snug">
+                      {o.description}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-3 border-t pt-3">
+              <span className="text-xs text-gray-500">
+                {hasCustomDesign
+                  ? "Your changes to this style are saved automatically."
+                  : "Using the default arrangement for this style."}
+              </span>
+              <div className="ml-auto flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!hasCustomDesign}
+                  onClick={() => {
+                    if (
+                      confirm(
+                        "Revert this style to its default arrangement? Your edits to the other styles are kept.",
+                      )
+                    )
+                      revertCurrentLayout();
+                  }}
+                >
+                  Revert this style
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={customisedLayoutCount === 0}
+                  onClick={() => {
+                    if (
+                      confirm(
+                        `Reset all ${customisedLayoutCount} customised style(s) back to defaults? This cannot be undone.`,
+                      )
+                    )
+                      resetAllDesigns();
+                  }}
+                >
+                  Reset all
+                </Button>
+              </div>
+            </div>
+          </div>
+
           <TemplateDesigner
             config={
               selectedTemplate === CUSTOM_TEMPLATE_ID
@@ -141,6 +231,9 @@ export function LabelWizard() {
                 : getConfigById(selectedTemplate)
             }
             addresses={addresses}
+            layout={fieldLayout}
+            initialTemplate={currentTemplate ?? undefined}
+            onTemplateChange={handleTemplateChange}
             onSave={saveTemplate}
           />
         </div>

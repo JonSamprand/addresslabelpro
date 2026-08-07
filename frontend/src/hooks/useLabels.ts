@@ -8,6 +8,7 @@ import {
   customConfigToSpec,
   getConfigById,
   type LabelTemplateConfig,
+  type FieldLayout,
 } from "@/lib/templates";
 import {
   organize,
@@ -34,6 +35,7 @@ type PersistedState = {
   groupKey: GroupKey;
   sortDir: SortDir;
   pageBreakPerGroup: boolean;
+  fieldLayout: FieldLayout;
 };
 
 function loadPersisted(): PersistedState | null {
@@ -68,7 +70,12 @@ export function useLabels() {
   const [mappings, setMappings] = useState<ColumnMapping[]>(persisted?.mappings ?? []);
   const [previewData, setPreviewData] = useState<LabelPreviewResponse | null>(null);
   const [addresses, setAddresses] = useState<AddressData[]>([]);
-  const [labelTemplate, setLabelTemplate] = useState<Template | null>(null);
+  // Designer work is stored PER field-layout so switching presets (or leaving
+  // and returning to the Design step) never destroys what the user built.
+  // Nothing here is ever cleared implicitly — only by an explicit revert/reset.
+  const [templatesByLayout, setTemplatesByLayout] = useState<
+    Partial<Record<FieldLayout, Template>>
+  >({});
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState(persisted?.selectedTemplate ?? "avery_5160");
   // Holds the user-defined dimensions when `selectedTemplate === "custom"`.
@@ -83,6 +90,10 @@ export function useLabels() {
   const [pageBreakPerGroup, setPageBreakPerGroup] = useState<boolean>(
     persisted?.pageBreakPerGroup ?? false,
   );
+  // How the address is broken into editable fields in the Designer.
+  const [fieldLayout, setFieldLayout] = useState<FieldLayout>(
+    persisted?.fieldLayout ?? "combined",
+  );
 
   // Persist the minimal state needed to resume after Stripe redirect.
   useEffect(() => {
@@ -95,6 +106,7 @@ export function useLabels() {
       groupKey,
       sortDir,
       pageBreakPerGroup,
+      fieldLayout,
     });
   }, [
     step,
@@ -105,6 +117,7 @@ export function useLabels() {
     groupKey,
     sortDir,
     pageBreakPerGroup,
+    fieldLayout,
   ]);
 
   /**
@@ -174,9 +187,34 @@ export function useLabels() {
     }
   }, []);
 
-  const saveTemplate = useCallback((template: Template) => {
-    setLabelTemplate(template);
-    setStep("review");
+  /** Live autosave from the canvas — fires on every edit (debounced). */
+  const handleTemplateChange = useCallback(
+    (template: Template) => {
+      setTemplatesByLayout((prev) => ({ ...prev, [fieldLayout]: template }));
+    },
+    [fieldLayout],
+  );
+
+  const saveTemplate = useCallback(
+    (template: Template) => {
+      setTemplatesByLayout((prev) => ({ ...prev, [fieldLayout]: template }));
+      setStep("review");
+    },
+    [fieldLayout],
+  );
+
+  /** Explicit, user-initiated: drop only the CURRENT layout's customisations. */
+  const revertCurrentLayout = useCallback(() => {
+    setTemplatesByLayout((prev) => {
+      const next = { ...prev };
+      delete next[fieldLayout];
+      return next;
+    });
+  }, [fieldLayout]);
+
+  /** Explicit, user-initiated: drop every layout's customisations. */
+  const resetAllDesigns = useCallback(() => {
+    setTemplatesByLayout({});
   }, []);
 
   const skipDesigner = useCallback(() => {
@@ -209,13 +247,14 @@ export function useLabels() {
         body: JSON.stringify({
           addresses: orderedAddresses,
           templateId: selectedTemplate,
-          labelTemplate: labelTemplate || undefined,
+          labelTemplate: templatesByLayout[fieldLayout] || undefined,
           // For custom mode the Next.js generate route resolves dimensions
           // from this payload instead of looking them up in LABEL_CONFIGS.
           customConfig:
             selectedTemplate === CUSTOM_TEMPLATE_ID
               ? customTemplateConfig ?? undefined
               : undefined,
+          fieldLayout,
         }),
       });
 
@@ -237,11 +276,12 @@ export function useLabels() {
   }, [
     addresses,
     selectedTemplate,
-    labelTemplate,
+    templatesByLayout,
     customTemplateConfig,
     groupKey,
     sortDir,
     pageBreakPerGroup,
+    fieldLayout,
   ]);
 
   const reset = useCallback(() => {
@@ -253,13 +293,14 @@ export function useLabels() {
     setMappings([]);
     setPreviewData(null);
     setAddresses([]);
-    setLabelTemplate(null);
+    setTemplatesByLayout({});
     setPdfUrl(null);
     setSelectedTemplate("avery_5160");
     setCustomTemplateConfig(null);
     setGroupKey("none");
     setSortDir("asc");
     setPageBreakPerGroup(false);
+    setFieldLayout("combined");
     if (typeof window !== "undefined") {
       sessionStorage.removeItem(STORAGE_KEY);
       sessionStorage.removeItem("alp_pending_job_id");
@@ -289,7 +330,12 @@ export function useLabels() {
     mappings,
     previewData,
     addresses,
-    labelTemplate,
+    currentTemplate: templatesByLayout[fieldLayout] ?? null,
+    hasCustomDesign: Boolean(templatesByLayout[fieldLayout]),
+    customisedLayoutCount: Object.keys(templatesByLayout).length,
+    handleTemplateChange,
+    revertCurrentLayout,
+    resetAllDesigns,
     pdfUrl,
     selectedTemplate,
     setSelectedTemplate,
@@ -302,6 +348,8 @@ export function useLabels() {
     setSortDir,
     pageBreakPerGroup,
     setPageBreakPerGroup,
+    fieldLayout,
+    setFieldLayout,
     labelsPerPage: (() => {
       const c =
         selectedTemplate === CUSTOM_TEMPLATE_ID && customTemplateConfig
