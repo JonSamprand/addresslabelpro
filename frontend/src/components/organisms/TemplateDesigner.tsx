@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { Template, Schema, Font } from "@pdfme/common";
 import type { AddressData } from "@/types";
-import type { LabelTemplateConfig } from "@/lib/templates";
+import type { LabelTemplateConfig, FieldLayout } from "@/lib/templates";
 import { buildDesignerTemplate } from "@/lib/templates";
+import { addressToFieldValues } from "@/lib/addressFields";
 
 /**
  * Load Roboto font variants so the user has real bold/italic options in
@@ -34,54 +35,9 @@ interface TemplateDesignerProps {
   config: LabelTemplateConfig;
   addresses: AddressData[];
   initialTemplate?: Template;
+  /** Which field breakdown to seed the canvas with. Changing it rebuilds. */
+  layout?: FieldLayout;
   onSave: (template: Template) => void;
-}
-
-/**
- * Format an AddressData into the values keyed by schema field name.
- * Produces every field the designer templates may reference:
- *   - composed: addressBlock (multi-line), cityStateZip, combinedStreet
- *   - individual: street, street2, company, country (for split-field layouts)
- *   - also a `full` alias for users who want one block incl. name.
- */
-function addressToFieldValues(addr: AddressData): Record<string, string> {
-  // Prefer server-composed values, fall back to local composition.
-  const cityStateZip =
-    addr.city_state_zip ||
-    (() => {
-      const parts: string[] = [];
-      if (addr.city) parts.push(addr.city);
-      if (addr.state) {
-        if (parts.length) parts[parts.length - 1] += ",";
-        parts.push(addr.state);
-      }
-      if (addr.zip_code) parts.push(addr.zip_code);
-      return parts.join(" ");
-    })();
-
-  const combinedStreet =
-    addr.combined_street ||
-    [addr.street1, addr.street2].filter(Boolean).join(", ");
-
-  const country = addr.is_international && addr.country ? addr.country.toUpperCase() : "";
-
-  // addressBlock = everything except the name, with empty lines collapsed.
-  const addressBlock =
-    addr.address_block?.split("\n").filter((l) => l.trim() && l.trim() !== addr.name).join("\n") ||
-    [addr.company, combinedStreet, cityStateZip, country].filter(Boolean).join("\n");
-
-  return {
-    name: addr.name || "",
-    company: addr.company || "",
-    street: combinedStreet,
-    street2: addr.street2 || "",
-    combinedStreet,
-    cityStateZip,
-    country,
-    addressBlock,
-    // Full block including name — useful if the user deletes `name` field.
-    fullAddress: [addr.name, addressBlock].filter(Boolean).join("\n"),
-  };
 }
 
 /**
@@ -107,7 +63,13 @@ type DesignerInstance = {
   destroy: () => void;
 };
 
-export function TemplateDesigner({ config, addresses, initialTemplate, onSave }: TemplateDesignerProps) {
+export function TemplateDesigner({
+  config,
+  addresses,
+  initialTemplate,
+  layout = "combined",
+  onSave,
+}: TemplateDesignerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const designerRef = useRef<DesignerInstance | null>(null);
   // Latest user-edited template (positions, sizes, added shapes) — content stripped.
@@ -134,7 +96,7 @@ export function TemplateDesigner({ config, addresses, initialTemplate, onSave }:
 
       if (cancelled || !containerRef.current) return;
 
-      const baseTemplate = initialTemplate || buildDesignerTemplate(config);
+      const baseTemplate = initialTemplate || buildDesignerTemplate(config, layout);
       const firstAddr = addresses[0];
       const template = firstAddr ? templateWithData(baseTemplate, firstAddr) : baseTemplate;
       latestTemplateRef.current = template;
@@ -171,8 +133,11 @@ export function TemplateDesigner({ config, addresses, initialTemplate, onSave }:
       latestTemplateRef.current = null;
       setReady(false);
     };
+    // Rebuild the canvas only when the label size or the field breakdown
+    // changes — not when `addresses` updates, which would blow away the
+    // user's in-progress edits on every preview navigation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config]);
+  }, [config, layout]);
 
   // Inject the current address's data whenever the preview index changes
   useEffect(() => {

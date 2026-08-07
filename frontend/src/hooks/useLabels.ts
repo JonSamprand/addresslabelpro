@@ -8,6 +8,7 @@ import {
   customConfigToSpec,
   getConfigById,
   type LabelTemplateConfig,
+  type FieldLayout,
 } from "@/lib/templates";
 import {
   organize,
@@ -34,6 +35,7 @@ type PersistedState = {
   groupKey: GroupKey;
   sortDir: SortDir;
   pageBreakPerGroup: boolean;
+  fieldLayout: FieldLayout;
 };
 
 function loadPersisted(): PersistedState | null {
@@ -83,6 +85,10 @@ export function useLabels() {
   const [pageBreakPerGroup, setPageBreakPerGroup] = useState<boolean>(
     persisted?.pageBreakPerGroup ?? false,
   );
+  // How the address is broken into editable fields in the Designer.
+  const [fieldLayout, setFieldLayout] = useState<FieldLayout>(
+    persisted?.fieldLayout ?? "combined",
+  );
 
   // Persist the minimal state needed to resume after Stripe redirect.
   useEffect(() => {
@@ -95,6 +101,7 @@ export function useLabels() {
       groupKey,
       sortDir,
       pageBreakPerGroup,
+      fieldLayout,
     });
   }, [
     step,
@@ -105,6 +112,7 @@ export function useLabels() {
     groupKey,
     sortDir,
     pageBreakPerGroup,
+    fieldLayout,
   ]);
 
   /**
@@ -216,6 +224,7 @@ export function useLabels() {
             selectedTemplate === CUSTOM_TEMPLATE_ID
               ? customTemplateConfig ?? undefined
               : undefined,
+          fieldLayout,
         }),
       });
 
@@ -242,6 +251,7 @@ export function useLabels() {
     groupKey,
     sortDir,
     pageBreakPerGroup,
+    fieldLayout,
   ]);
 
   const reset = useCallback(() => {
@@ -260,6 +270,7 @@ export function useLabels() {
     setGroupKey("none");
     setSortDir("asc");
     setPageBreakPerGroup(false);
+    setFieldLayout("combined");
     if (typeof window !== "undefined") {
       sessionStorage.removeItem(STORAGE_KEY);
       sessionStorage.removeItem("alp_pending_job_id");
@@ -302,6 +313,8 @@ export function useLabels() {
     setSortDir,
     pageBreakPerGroup,
     setPageBreakPerGroup,
+    fieldLayout,
+    setFieldLayout,
     labelsPerPage: (() => {
       const c =
         selectedTemplate === CUSTOM_TEMPLATE_ID && customTemplateConfig

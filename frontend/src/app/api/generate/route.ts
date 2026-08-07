@@ -10,7 +10,12 @@ import {
   buildSheetTemplate,
   buildInputs,
   type LabelTemplateConfig,
+  type FieldLayout,
 } from "@/lib/templates";
+// Shared with the Designer so the fields the user arranges are exactly the
+// fields we can fill. See lib/addressFields.ts.
+import { addressToFieldValues } from "@/lib/addressFields";
+import type { AddressData } from "@/types";
 
 let _fontCache: Font | null = null;
 async function loadFonts(): Promise<Font> {
@@ -32,21 +37,6 @@ async function loadFonts(): Promise<Font> {
   return _fontCache;
 }
 
-interface AddressData {
-  name: string;
-  company: string;
-  street1: string;
-  street2: string;
-  city: string;
-  state: string;
-  zip_code: string;
-  country: string;
-  is_international: boolean;
-  combined_street?: string;
-  city_state_zip?: string;
-  address_block?: string;
-}
-
 interface GenerateRequest {
   addresses: AddressData[];
   templateId: string;
@@ -54,43 +44,8 @@ interface GenerateRequest {
   // When templateId === "custom", caller passes the dimensions inline rather
   // than relying on LABEL_CONFIGS lookup.
   customConfig?: LabelTemplateConfig;
-}
-
-function formatAddress(addr: AddressData) {
-  const cityStateZip =
-    addr.city_state_zip ||
-    (() => {
-      const parts: string[] = [];
-      if (addr.city) parts.push(addr.city);
-      if (addr.state) {
-        if (parts.length) parts[parts.length - 1] += ",";
-        parts.push(addr.state);
-      }
-      if (addr.zip_code) parts.push(addr.zip_code);
-      return parts.join(" ");
-    })();
-
-  const combinedStreet =
-    addr.combined_street ||
-    [addr.street1, addr.street2].filter(Boolean).join(", ");
-
-  const country = addr.is_international && addr.country ? addr.country.toUpperCase() : "";
-
-  const addressBlock =
-    addr.address_block?.split("\n").filter((l) => l.trim() && l.trim() !== addr.name).join("\n") ||
-    [addr.company, combinedStreet, cityStateZip, country].filter(Boolean).join("\n");
-
-  return {
-    name: addr.name || "",
-    company: addr.company || "",
-    street: combinedStreet,
-    street2: addr.street2 || "",
-    combinedStreet,
-    cityStateZip,
-    country,
-    addressBlock,
-    fullAddress: [addr.name, addressBlock].filter(Boolean).join("\n"),
-  };
+  // Which field breakdown to fall back to when the user skipped the Designer.
+  fieldLayout?: FieldLayout;
 }
 
 export async function POST(request: NextRequest) {
@@ -107,15 +62,15 @@ export async function POST(request: NextRequest) {
       labelSchema = body.labelTemplate.schemas[0] as Schema[];
     } else {
       const { buildDesignerTemplate } = await import("@/lib/templates");
-      const defaultTemplate = buildDesignerTemplate(config);
+      const defaultTemplate = buildDesignerTemplate(config, body.fieldLayout ?? "combined");
       labelSchema = defaultTemplate.schemas[0] as Schema[];
     }
 
     // Build the full-page sheet template
     const sheetTemplate = buildSheetTemplate(config, labelSchema);
 
-    // Format addresses
-    const formatted = body.addresses.map(formatAddress);
+    // Format addresses using the SAME composition the Designer previewed with.
+    const formatted = body.addresses.map(addressToFieldValues);
 
     // Build inputs (one per page)
     const inputs = buildInputs(formatted, config);

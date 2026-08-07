@@ -207,54 +207,109 @@ export function getConfigsByCategory(
 const LABEL_PADDING = 2;
 
 /**
- * Build a pdfme template for a single label cell.
- * This is used in the Designer so the user can visually arrange
- * fields within one label.
+ * How the address is broken into editable fields in the Designer.
+ *
+ *  - "combined"  : name + one multi-line addressBlock (fewest fields, most
+ *                  forgiving — empty lines collapse automatically)
+ *  - "canva"     : Name / Address / City, State / ZIP, Country — mirrors the
+ *                  4-field shape users know from Canva's data merge
+ *  - "separated" : every component is its own field, for full control
  */
-export function buildDesignerTemplate(config: LabelTemplateConfig): Template {
+export type FieldLayout = "combined" | "canva" | "separated";
+
+interface FieldSpec {
+  /** Must match a key of AddressFieldValues in lib/addressFields.ts. */
+  name: string;
+  /** Vertical weight — share of the label's inner height. */
+  weight: number;
+  fontSize: number;
+  bold?: boolean;
+}
+
+const LAYOUTS: Record<FieldLayout, FieldSpec[]> = {
+  combined: [
+    { name: "name", weight: 0.28, fontSize: 11, bold: true },
+    { name: "addressBlock", weight: 0.72, fontSize: 9 },
+  ],
+  canva: [
+    { name: "name", weight: 0.28, fontSize: 11, bold: true },
+    { name: "street", weight: 0.26, fontSize: 9 },
+    { name: "cityState", weight: 0.23, fontSize: 9 },
+    { name: "zipCountry", weight: 0.23, fontSize: 9 },
+  ],
+  separated: [
+    { name: "name", weight: 0.2, fontSize: 10, bold: true },
+    { name: "company", weight: 0.14, fontSize: 8 },
+    { name: "street1", weight: 0.14, fontSize: 8 },
+    { name: "street2", weight: 0.13, fontSize: 8 },
+    { name: "cityState", weight: 0.14, fontSize: 8 },
+    { name: "zip", weight: 0.13, fontSize: 8 },
+    { name: "country", weight: 0.12, fontSize: 8 },
+  ],
+};
+
+export const FIELD_LAYOUT_OPTIONS: {
+  value: FieldLayout;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "combined",
+    label: "Combined block",
+    description: "Name + one address block. Simplest — blank lines collapse on their own.",
+  },
+  {
+    value: "canva",
+    label: "Canva-style (4 fields)",
+    description: "Name · Address · City, State · ZIP, Country. Familiar data-merge shape.",
+  },
+  {
+    value: "separated",
+    label: "Fully separated",
+    description: "Every part is its own field — drag, resize, or delete each one.",
+  },
+];
+
+/**
+ * Build a pdfme template for a single label cell.
+ * Used in the Designer so the user can visually arrange fields within one label.
+ *
+ * Field names must match keys of AddressFieldValues (lib/addressFields.ts) —
+ * that's what the generator binds real data to.
+ */
+export function buildDesignerTemplate(
+  config: LabelTemplateConfig,
+  layout: FieldLayout = "combined",
+): Template {
   const w = config.labelWidth;
   const h = config.labelHeight;
   const p = LABEL_PADDING;
   const innerW = w - p * 2;
   const innerH = h - p * 2;
 
-  // Two-field default: `name` on top, `addressBlock` as a single multi-line
-  // text field filling the rest. Because `addressBlock` is one text block,
-  // empty lines naturally collapse — the design doesn't break when a record
-  // has no apartment, company, or country.
-  const nameHeight = innerH * 0.28;
+  const specs = LAYOUTS[layout] ?? LAYOUTS.combined;
+
+  let cursorY = p;
+  const schemas = specs.map((spec) => {
+    const fieldHeight = innerH * spec.weight;
+    const field = {
+      name: spec.name,
+      type: "text" as const,
+      position: { x: p, y: cursorY },
+      width: innerW,
+      height: fieldHeight,
+      fontSize: spec.fontSize,
+      alignment: "center" as const,
+      lineHeight: 1.2,
+      fontName: spec.bold ? "Roboto Bold" : "Roboto",
+    };
+    cursorY += fieldHeight;
+    return field;
+  });
 
   return {
-    basePdf: {
-      width: w,
-      height: h,
-      padding: [p, p, p, p],
-    },
-    schemas: [
-      [
-        {
-          name: "name",
-          type: "text",
-          position: { x: p, y: p },
-          width: innerW,
-          height: nameHeight,
-          fontSize: 11,
-          alignment: "center",
-          fontName: "Roboto Bold",
-        },
-        {
-          name: "addressBlock",
-          type: "text",
-          position: { x: p, y: p + nameHeight },
-          width: innerW,
-          height: innerH - nameHeight,
-          fontSize: 9,
-          alignment: "center",
-          lineHeight: 1.2,
-          fontName: "Roboto",
-        },
-      ],
-    ],
+    basePdf: { width: w, height: h, padding: [p, p, p, p] },
+    schemas: [schemas],
   };
 }
 
