@@ -5,7 +5,7 @@ import type { Template, Schema, Font } from "@pdfme/common";
 import type { AddressData } from "@/types";
 import type { LabelTemplateConfig, FieldLayout } from "@/lib/templates";
 import { buildDesignerTemplate } from "@/lib/templates";
-import { addressToFieldValues } from "@/lib/addressFields";
+import { addressToFieldValues, ADDRESSABLE_FIELDS } from "@/lib/addressFields";
 
 /**
  * Load Roboto font variants so the user has real bold/italic options in
@@ -37,6 +37,12 @@ interface TemplateDesignerProps {
   initialTemplate?: Template;
   /** Which field breakdown to seed the canvas with. Changing it rebuilds. */
   layout?: FieldLayout;
+  /**
+   * Fires on every edit (debounced) and once more on unmount. The parent
+   * persists this so leaving the step — or switching layout presets — can
+   * never lose work.
+   */
+  onTemplateChange?: (template: Template) => void;
   onSave: (template: Template) => void;
 }
 
@@ -68,6 +74,7 @@ export function TemplateDesigner({
   addresses,
   initialTemplate,
   layout = "combined",
+  onTemplateChange,
   onSave,
 }: TemplateDesignerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -76,6 +83,13 @@ export function TemplateDesigner({
   const latestTemplateRef = useRef<Template | null>(null);
   // When we programmatically updateTemplate, ignore the resulting onChange.
   const suppressChangeRef = useRef(false);
+  // Stable refs so the (config, layout)-scoped init effect never re-runs just
+  // because a parent callback identity changed.
+  const onTemplateChangeRef = useRef(onTemplateChange);
+  onTemplateChangeRef.current = onTemplateChange;
+  const initialTemplateRef = useRef(initialTemplate);
+  initialTemplateRef.current = initialTemplate;
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [ready, setReady] = useState(false);
 
@@ -96,7 +110,11 @@ export function TemplateDesigner({
 
       if (cancelled || !containerRef.current) return;
 
-      const baseTemplate = initialTemplate || buildDesignerTemplate(config, layout);
+      // Restore this layout's saved work if the user has any; otherwise seed
+      // from the preset. This is what makes navigating away / switching
+      // presets non-destructive.
+      const baseTemplate =
+        initialTemplateRef.current || buildDesignerTemplate(config, layout);
       const firstAddr = addresses[0];
       const template = firstAddr ? templateWithData(baseTemplate, firstAddr) : baseTemplate;
       latestTemplateRef.current = template;
@@ -118,6 +136,13 @@ export function TemplateDesigner({
         if (suppressChangeRef.current) return;
         // Cache user edits so we can re-apply them when navigating preview.
         latestTemplateRef.current = t;
+        // Autosave upward, debounced so dragging doesn't thrash the parent.
+        if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = setTimeout(() => {
+          if (latestTemplateRef.current) {
+            onTemplateChangeRef.current?.(latestTemplateRef.current);
+          }
+        }, 250);
       });
 
       designerRef.current = designer;
@@ -128,6 +153,15 @@ export function TemplateDesigner({
 
     return () => {
       cancelled = true;
+      // Flush any pending debounced edit before tearing down — otherwise an
+      // edit made in the last 250ms before switching layout would be lost.
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      if (latestTemplateRef.current) {
+        onTemplateChangeRef.current?.(latestTemplateRef.current);
+      }
       designer?.destroy();
       designerRef.current = null;
       latestTemplateRef.current = null;
@@ -153,6 +187,50 @@ export function TemplateDesigner({
       suppressChangeRef.current = false;
     }, 0);
   }, [previewIndex, ready, currentAddr]);
+
+  /**
+   * Append a data field to the canvas without disturbing anything already
+   * there. This is how users "combine" or "separate" parts: add
+   * `cityStateZip` for one line, or `city` + `state` + `zip` for three.
+   */
+  const handleAddField = (fieldName: string) => {
+    const designer = designerRef.current;
+    if (!designer) return;
+    const current = latestTemplateRef.current ?? designer.getTemplate();
+    const page = (current.schemas[0] ?? []) as Schema[];
+    if (page.some((f) => f.name === fieldName)) return; // already on the label
+
+    // Drop the new field just below the lowest existing one, clamped inside
+    // the label so it can never land off-canvas.
+    const lowest = page.reduce(
+      (m, f) => Math.max(m, (f.position?.y ?? 0) + (f.height ?? 0)),
+      0,
+    );
+    const h = 5;
+    const y = Math.min(lowest + 1, Math.max(config.labelHeight - h - 1, 1));
+
+    const added = {
+      name: fieldName,
+      type: "text",
+      position: { x: 2, y },
+      width: Math.max(config.labelWidth - 4, 5),
+      height: h,
+      fontSize: 9,
+      alignment: "center",
+      lineHeight: 1.2,
+      fontName: "Roboto",
+      content: currentAddr ? addressToFieldValues(currentAddr)[fieldName] ?? "" : "",
+    } as unknown as Schema;
+
+    const next = { ...current, schemas: [[...page, added]] } as Template;
+    latestTemplateRef.current = next;
+    suppressChangeRef.current = true;
+    designer.updateTemplate(next);
+    setTimeout(() => {
+      suppressChangeRef.current = false;
+      onTemplateChangeRef.current?.(next);
+    }, 0);
+  };
 
   const handleSave = () => {
     const template = designerRef.current?.getTemplate();
@@ -192,12 +270,37 @@ export function TemplateDesigner({
           </button>
         </div>
 
-        <button
-          onClick={handleSave}
-          className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          Save & Continue
-        </button>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-xs text-gray-600">
+            <span className="whitespace-nowrap">Add field</span>
+            <select
+              value=""
+              onChange={(e) => {
+                if (e.target.value) handleAddField(e.target.value);
+                e.target.value = "";
+              }}
+              className="px-2 py-1.5 text-sm text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Choose…</option>
+              <optgroup label="Individual">
+                {ADDRESSABLE_FIELDS.filter((f) => f.group === "Individual").map((f) => (
+                  <option key={f.name} value={f.name}>{f.label}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Combined">
+                {ADDRESSABLE_FIELDS.filter((f) => f.group === "Combined").map((f) => (
+                  <option key={f.name} value={f.name}>{f.label}</option>
+                ))}
+              </optgroup>
+            </select>
+          </label>
+          <button
+            onClick={handleSave}
+            className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Save & Continue
+          </button>
+        </div>
       </div>
 
       {/* pdfme Designer */}

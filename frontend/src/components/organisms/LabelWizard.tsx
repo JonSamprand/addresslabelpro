@@ -43,6 +43,12 @@ export function LabelWizard() {
     setPageBreakPerGroup,
     fieldLayout,
     setFieldLayout,
+    currentTemplate,
+    hasCustomDesign,
+    customisedLayoutCount,
+    handleTemplateChange,
+    revertCurrentLayout,
+    resetAllDesigns,
     labelsPerPage,
     upload,
     mapFields,
@@ -146,9 +152,10 @@ export function LabelWizard() {
               Address fields
             </h3>
             <p className="text-xs text-gray-500 mb-3">
-              Choose how the address is split into editable fields. Switching
-              resets the canvas to that arrangement — you can still drag,
-              resize, or delete any field afterwards.
+              Choose how the address is split into editable fields. Your edits
+              are kept separately for each style — switching back and forth
+              never loses work. Use <em>Add field</em> below to combine or
+              separate parts (e.g. one “City, State ZIP” line, or three).
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {FIELD_LAYOUT_OPTIONS.map((o) => {
@@ -175,6 +182,46 @@ export function LabelWizard() {
                 );
               })}
             </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-3 border-t pt-3">
+              <span className="text-xs text-gray-500">
+                {hasCustomDesign
+                  ? "Your changes to this style are saved automatically."
+                  : "Using the default arrangement for this style."}
+              </span>
+              <div className="ml-auto flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!hasCustomDesign}
+                  onClick={() => {
+                    if (
+                      confirm(
+                        "Revert this style to its default arrangement? Your edits to the other styles are kept.",
+                      )
+                    )
+                      revertCurrentLayout();
+                  }}
+                >
+                  Revert this style
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={customisedLayoutCount === 0}
+                  onClick={() => {
+                    if (
+                      confirm(
+                        `Reset all ${customisedLayoutCount} customised style(s) back to defaults? This cannot be undone.`,
+                      )
+                    )
+                      resetAllDesigns();
+                  }}
+                >
+                  Reset all
+                </Button>
+              </div>
+            </div>
           </div>
 
           <TemplateDesigner
@@ -185,6 +232,8 @@ export function LabelWizard() {
             }
             addresses={addresses}
             layout={fieldLayout}
+            initialTemplate={currentTemplate ?? undefined}
+            onTemplateChange={handleTemplateChange}
             onSave={saveTemplate}
           />
         </div>

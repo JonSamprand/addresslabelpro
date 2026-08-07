@@ -36,6 +36,33 @@ export interface AddressFieldValues {
   fullAddress: string;     // addressBlock including the name
 }
 
+/**
+ * Every binding a label field can point at, grouped for the "add field" menu.
+ *
+ * "Combining" fields is expressed here: pick `cityStateZip` for one line, or
+ * `city` + `state` + `zip` for three. Same data, user's choice of granularity.
+ */
+export const ADDRESSABLE_FIELDS: {
+  name: keyof AddressFieldValues & string;
+  label: string;
+  group: "Individual" | "Combined";
+}[] = [
+  { name: "name", label: "Name", group: "Individual" },
+  { name: "company", label: "Company", group: "Individual" },
+  { name: "street1", label: "Address line 1", group: "Individual" },
+  { name: "street2", label: "Address line 2", group: "Individual" },
+  { name: "city", label: "City", group: "Individual" },
+  { name: "state", label: "State / Region", group: "Individual" },
+  { name: "zip", label: "ZIP / Postal code", group: "Individual" },
+  { name: "country", label: "Country", group: "Individual" },
+  { name: "street", label: "Address 1 + 2 (one line)", group: "Combined" },
+  { name: "cityState", label: "City, State", group: "Combined" },
+  { name: "zipCountry", label: "ZIP + Country", group: "Combined" },
+  { name: "cityStateZip", label: "City, State ZIP", group: "Combined" },
+  { name: "addressBlock", label: "Full address block (no name)", group: "Combined" },
+  { name: "fullAddress", label: "Full address incl. name", group: "Combined" },
+];
+
 export function addressToFieldValues(addr: AddressData): AddressFieldValues {
   const cityStateZip =
     addr.city_state_zip ||
